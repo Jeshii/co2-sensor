@@ -32,8 +32,52 @@
 #include <Arduino.h>
 #include <SensirionI2CScd4x.h>
 #include <Wire.h>
+#include <TimeLib.h>
+#include <LiquidCrystal.h>
+#include <math.h>
 
 SensirionI2CScd4x scd4x;
+
+// Set up LCD object for shield
+LiquidCrystal lcd(8,9,4,5,6,7);
+
+#define LCD_Backlight 10
+
+// Define buttons on shield
+#define btnRIGHT    0
+#define btnUP       1
+#define btnDOWN     2
+#define btnLEFT     3
+#define btnSELECT   4
+#define btnNONE     5
+
+// Define variable to hold current button
+int lcd_key = 0;
+
+// Define variabke to hold button analog value
+int adc_key_in = 0;
+
+int lcd_level = 16;
+
+//Function to read buttons
+int read_LCD_buttons() {
+  // read value from sensor
+  adc_key_in = analogRead(0);
+
+  // Approximate button values are 0, 144, 329, 504, and 741
+  // Add 50 to those values and check to see if we are close
+  if (adc_key_in > 1000)   return btnNONE; // No button is pressed
+  if (adc_key_in < 50)     return btnRIGHT; // Right button pressed
+  if (adc_key_in < 195)    return btnUP; // Right button pressed
+  if (adc_key_in < 380)    return btnDOWN; // Right button pressed
+  if (adc_key_in < 555)    return btnLEFT; // Right button pressed
+  if (adc_key_in < 790)    return btnSELECT; // Right button pressed
+  return btnNONE; // if no response
+}
+
+//custom characters
+byte degC[8] = {B01000,B10100,B01000,B00010,B00101,B00100,B00101,B00010};
+byte small2[8] = {B00000,B00000,B01100,B10010,B00010,B00100,B01000,B11110};
 
 void printUint16Hex(uint16_t value) {
     Serial.print(value < 4096 ? "0" : "");
@@ -51,9 +95,17 @@ void printSerialNumber(uint16_t serial0, uint16_t serial1, uint16_t serial2) {
 }
 
 void setup() {
-    pinMode(11, OUTPUT);
-    pinMode(12, OUTPUT);
-    pinMode(13, OUTPUT);
+
+    setTime(9,45,0,13,10,2022);
+
+    lcd.begin(16,2);
+    lcd.setCursor(0,0);
+
+    lcd.createChar(1,degC);
+    lcd.createChar(2,small2);
+
+    pinMode(LCD_Backlight, OUTPUT);
+    analogWrite(LCD_Backlight, (lcd_level*8)-1);
 
     Serial.begin(115200);
     while (!Serial) {
@@ -102,57 +154,100 @@ void loop() {
     uint16_t error;
     char errorMessage[256];
 
-    delay(100);
-
-    // Read Measurement
-    uint16_t co2 = 0;
-    float temperature = 0.0f;
-    float humidity = 0.0f;
-    bool isDataReady = false;
-    error = scd4x.getDataReadyFlag(isDataReady);
-    if (error) {
-        Serial.print("Error trying to execute readMeasurement(): ");
-        errorToString(error, errorMessage, 256);
-        Serial.println(errorMessage);
-        return;
+    switch (lcd_key) {
+      case btnUP: {
+          if (lcd_level < 30) {
+            lcd_level++;
+          }
+          analogWrite(LCD_Backlight, (lcd_level*8)-1);
+          Serial.println(lcd_level);
+          break;
+      }
+      case btnDOWN: {
+          if (lcd_level > 2) {
+            lcd_level--;  
+          }
+          analogWrite(LCD_Backlight, (lcd_level*8)-1);
+          Serial.println(lcd_level);
+          break;
+      }
+      case btnNONE: {
+          Serial.println(lcd_level);
+          break;
+      }
     }
-    if (!isDataReady) {
-        return;
-    }
-    error = scd4x.readMeasurement(co2, temperature, humidity);
-    if (error) {
-        Serial.print("Error trying to execute readMeasurement(): ");
-        errorToString(error, errorMessage, 256);
-        Serial.println(errorMessage);
-    } else if (co2 == 0) {
-        Serial.println("Invalid sample detected, skipping.");
-    } else {
-        Serial.print("Co2:");
-        Serial.print(co2);
-        Serial.print("\t\t");
-        Serial.print("Temperature:");
-        Serial.print(temperature);
-        Serial.print("\t");
-        Serial.print("Humidity:");
-        Serial.println(humidity);
 
-        if (co2 <= 700) {
-          Serial.println("Green LED On");
-          digitalWrite(11, HIGH);
-          digitalWrite(12, LOW);
-          digitalWrite(13, LOW);
+    int lastSecond=0;  
+    if ((second()%2 == 0) && (second() != lastSecond)) {
+        //print date and time
+        lcd.setCursor(0,0);
+        lcd.print(year());
+        lcd.print("/");
+        if (month()<10) {
+            lcd.print("0");
         }
-        else if (co2 > 700 && co2 <= 1000) {
-          Serial.println("Yellow LED On");
-          digitalWrite(11, LOW);
-          digitalWrite(12, HIGH);
-          digitalWrite(13, LOW);
+        lcd.print(month());
+        lcd.print("/");
+        if (day()<10) {
+            lcd.print("0");
         }
-        else if (co2 > 1000) {
-          Serial.println("Red LED On");
-          digitalWrite(11, LOW);
-          digitalWrite(12, LOW);
-          digitalWrite(13, HIGH);
+        lcd.print(day());
+        
+        lcd.setCursor(11,0);
+        if (hour()<10) {
+            lcd.print("0");
         }
+        lcd.print(hour());
+        lcd.print(":");
+        if (minute()<10) {
+            lcd.print("0");
+        }
+        lcd.print(minute());
+
+        // Read Measurement
+        uint16_t co2 = 0;
+        float temperature = 0.0f;
+        float humidity = 0.0f;
+        bool isDataReady = false;
+        error = scd4x.getDataReadyFlag(isDataReady);
+        if (error) {
+            Serial.print("Error trying to execute readMeasurement(): ");
+            errorToString(error, errorMessage, 256);
+            Serial.println(errorMessage);
+            return;
+        }
+        if (!isDataReady) {
+            return;
+        }
+        error = scd4x.readMeasurement(co2, temperature, humidity);
+        if (error) {
+            Serial.print("Error trying to execute readMeasurement(): ");
+            errorToString(error, errorMessage, 256);
+            Serial.println(errorMessage);
+        } else if (co2 == 0) {
+            Serial.println("Invalid sample detected, skipping.");
+        } else {        
+            lcd.setCursor(0,1);
+            lcd.print("CO");
+            lcd.write(2);
+            lcd.print(":");
+            if(co2<1000) {
+              lcd.print("0");
+            }
+            lcd.print(co2);
+            lcd.setCursor(9,1);
+            lcd.print(round(temperature));
+            lcd.write(1);
+            lcd.print("/");
+            lcd.print(round(humidity));
+            lcd.print("%");
+            Serial.println(lcd_level);
+            Serial.println(co2);
+        }
+      lastSecond=second();
+    }
+    else if (second()%2 == 1) {
+       lcd.setCursor(13,0);
+        lcd.print(" ");
     }
 }
