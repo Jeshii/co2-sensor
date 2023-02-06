@@ -1,6 +1,8 @@
 # co2-sensor
 Code needed to run a CO2 sensor with an Arduino Uno and a Sensirion SCD41.
 
+Code pulled from https://github.com/Sensirion/arduino-ble-gadget
+
 I didn't want to pay 41,000 yen to buy a CO2 monitor or pay 7000 yen only to find out it doesn't use a real CO2 sensor.
 
 Here's my BOM:
